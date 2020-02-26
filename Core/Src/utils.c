@@ -31,3 +31,6 @@
   	sprintf(clockValue, "%lu", currentClock);
   	HAL_UART_Transmit(&huart3, (uint8_t*) clockValue, strlen(clockValue), HAL_MAX_DELAY);
   }
+
+
+

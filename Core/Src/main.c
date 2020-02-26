@@ -31,6 +31,7 @@
 #include "reset-cause.h"
 #include "utils.h"
 #include "constants.h"
+#include "ringbuffer.h"
 
 /* USER CODE END Includes */
 
@@ -51,7 +52,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+RingBuffer txBuf, rxBuf;
+uint8_t txData;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,7 +64,35 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len) {
+	if (HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK) { //vero tentativo di trasmissione
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+		if (RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK) {
+			for (int e = 0; e < 10; e++) {
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+				HAL_Delay(200);
+				HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+				HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_14);
+				HAL_Delay(200);
+			}
+			return 0;
+		}
+	}
+	return 1;
+}
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	//callback chiamata quando ha finito invio di tutti i byte del parametro size (variabile "len" qui sopra)
 
+	if (RingBuffer_GetDataLength(&txBuf) > 0) {
+		RingBuffer_Read(&txBuf, &txData, 1);
+		HAL_UART_Transmit_IT(huart, &txData, 1);
+	} else {
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -82,8 +112,6 @@ int main(void) {
 	/* USER CODE BEGIN Init */
 
 	//declareConst();
-
-
 	/* USER CODE END Init */
 
 	/* Configure the system clock */
@@ -99,32 +127,30 @@ int main(void) {
 	MX_USART3_UART_Init();
 	/* USER CODE BEGIN 2 */
 
-	char* readInputTillEnter(char readBuf[]) {
-
-		int enterFound = 0;
-		int bufPosition = 0;
-		while (!enterFound) {
-			if (bufPosition == MAXINPUTBUF - 1) {
-				return readBuf;
-			}
-			char currentChar[1];
-			HAL_UART_Receive(&huart3, (uint8_t*) currentChar, 1,
-			HAL_MAX_DELAY);
-
-			if (currentChar[0] == '\r') {
-				readBuf[bufPosition] = '\0'; //terminate the array
-				enterFound = 1;
-			} else {
-				HAL_UART_Transmit(&huart3, (uint8_t*) currentChar, 1,
-				HAL_MAX_DELAY); //echo char back to terminal
-				readBuf[bufPosition] = currentChar[0];
-				bufPosition++;
-			}
-		}
-		return readBuf;
-	}
-
-
+//	char* readInputTillEnter(char readBuf[]) {
+//
+//		int enterFound = 0;
+//		int bufPosition = 0;
+//		while (!enterFound) {
+//			if (bufPosition == MAXINPUTBUF - 1) {
+//				return readBuf;
+//			}
+//			char currentChar[1];
+//			HAL_UART_Receive(&huart3, (uint8_t*) currentChar, 1,
+//			HAL_MAX_DELAY);
+//
+//			if (currentChar[0] == '\r') {
+//				readBuf[bufPosition] = '\0'; //terminate the array
+//				enterFound = 1;
+//			} else {
+//				HAL_UART_Transmit(&huart3, (uint8_t*) currentChar, 1,
+//				HAL_MAX_DELAY); //echo char back to terminal
+//				readBuf[bufPosition] = currentChar[0];
+//				bufPosition++;
+//			}
+//		}
+//		return readBuf;
+//	}
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 
@@ -138,24 +164,27 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
-		int i = 500;
+		int i = 1000;
 
-		HAL_UART_Transmit(&huart3, (uint8_t*) MSG_INSERT_TEXT_AND_PRESS_ENTER,
-				strlen(MSG_INSERT_TEXT_AND_PRESS_ENTER), HAL_MAX_DELAY);
+//		HAL_UART_Transmit(&huart3, (uint8_t*) MSG_INSERT_TEXT_AND_PRESS_ENTER,
+//				strlen(MSG_INSERT_TEXT_AND_PRESS_ENTER), HAL_MAX_DELAY);
 
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-		HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+//		char readBuf[MAXINPUTBUF];
+//		char *answer = readInputTillEnter(readBuf);
+//
+//		HAL_UART_Transmit(&huart3, (uint8_t*) MSG_YOU_WROTE,
+//				strlen(MSG_YOU_WROTE), HAL_MAX_DELAY);
+//		HAL_UART_Transmit(&huart3, (uint8_t*) answer, strlen(readBuf),
+//				HAL_MAX_DELAY);
 
-		char readBuf[MAXINPUTBUF];
-		char *answer = readInputTillEnter(readBuf);
+//		HAL_UART_Transmit(&huart3, (uint8_t*) MSG_TEST,	strlen(MSG_TEST), HAL_MAX_DELAY);
 
-		HAL_UART_Transmit(&huart3, (uint8_t*) MSG_YOU_WROTE,
-				strlen(MSG_YOU_WROTE), HAL_MAX_DELAY);
-		HAL_UART_Transmit(&huart3, (uint8_t*) answer, strlen(readBuf),
-				HAL_MAX_DELAY);
+		//HAL_UART_Transmit_IT(&huart3, (uint8_t*) MSG_TEST1, strlen(MSG_TEST1));
+		//HAL_UART_Transmit_IT(&huart3, (uint8_t*) MSG_TEST2, strlen(MSG_TEST2));
 
-		HAL_GPIO_WritePin( GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+		UART_Transmit(&huart3, (uint8_t*) MSG_TEST1, strlen(MSG_TEST1));
+		UART_Transmit(&huart3, (uint8_t*) MSG_TEST2, strlen(MSG_TEST2));
+
 		HAL_Delay(i);
 
 		/* USER CODE END WHILE */
@@ -176,8 +205,7 @@ void SystemClock_Config(void) {
 
 	/** Initializes the CPU, AHB and APB busses clocks
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI
-			| RCC_OSCILLATORTYPE_LSI;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_LSI;
 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
@@ -189,8 +217,7 @@ void SystemClock_Config(void) {
 	}
 	/** Initializes the CPU, AHB and APB busses clocks
 	 */
-	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
